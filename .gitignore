@@ -1,0 +1,8 @@
+reports/
+!reports/.gitkeep
+__pycache__/
+*.pyc
+.env
+.env.*
+node_modules/
+.promptfoo/

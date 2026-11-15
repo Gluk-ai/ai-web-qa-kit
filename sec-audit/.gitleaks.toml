@@ -1,0 +1,31 @@
+# Gitleaks config: built-in rules + a few extras for AI-built sites (Lovable/Vite, n8n bots).
+# Run:  gitleaks git .            (history)
+#       gitleaks dir dist/        (built bundle - where VITE_* secrets end up)
+[extend]
+useDefault = true
+
+[[rules]]
+id = "vite-env-secret"
+description = "Secret-looking VITE_* variable: everything prefixed VITE_ is shipped to the browser"
+regex = '''VITE_[A-Z0-9_]*(SECRET|PRIVATE|SERVICE_ROLE|OPENAI|ANTHROPIC|TWILIO|TOKEN)[A-Z0-9_]*\s*[=:]\s*["']?([A-Za-z0-9_\-\.]{16,})'''
+secretGroup = 2
+keywords = ["vite_"]
+
+[[rules]]
+id = "anthropic-key"
+description = "Anthropic API/admin key (not caught by gitleaks 8.24 defaults in our tests)"
+regex = '''sk-ant-(?:api|admin)\d{2}-[A-Za-z0-9_\-]{80,}'''
+keywords = ["sk-ant-"]
+
+[[rules]]
+id = "n8n-api-key"
+description = "n8n API key header value"
+regex = '''(?i)x-n8n-api-key["'\s:=]+([A-Za-z0-9_\-\.]{20,})'''
+secretGroup = 1
+keywords = ["n8n"]
+
+[allowlist]
+description = "Public by design"
+paths = ['''reports/''', '''node_modules/''']
+# Supabase anon/publishable keys are public; RLS is what protects data (see check_rls.py).
+regexes = ['''sb_publishable_[A-Za-z0-9_\-]+''']
