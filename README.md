@@ -53,7 +53,7 @@ Every script exits with `1` when it finds a problem, so each one works as a CI g
 
 - **`audit_ui.py`**: horizontal scroll, elements past the screen edge, overlapping top-level blocks (`getBoundingClientRect`), CLS ≥ 0.1, `scrollY` jumping backwards while scrolling down, too many font families, console errors and 4xx/5xx responses. It checks each cell at the top of the page and again after scrolling to the bottom, and saves a full-page screenshot of every cell.
 - **`check_rls.py`**: anonymous reads (rated CRITICAL for tables named like `leads`, `users` or `payments`), anonymous inserts (opt-in `--write-probe`), and a `service_role` key used where an anon key belongs.
-- **`.gitleaks.toml`**: the Gitleaks defaults plus rules for secret-looking `VITE_*` variables, n8n API keys and Anthropic keys. In our tests the 8.24 defaults missed the Anthropic key.
+- **`.gitleaks.toml`**: the Gitleaks defaults plus rules for secret-looking `VITE_*` variables and n8n API keys. Use Gitleaks 8.30 or newer: older releases do not detect Anthropic keys.
 - **`promptfooconfig.yaml`**: knowledge gaps, false-premise sycophancy, promises on the company's behalf, objection handling, off-topic and competitor requests, card numbers echoed back, and replies in the wrong language.
 
 ## Scope and ethics
