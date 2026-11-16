@@ -61,6 +61,18 @@ def main() -> int:
     # JWTs: decide by role, not by regex (an allowlist regex would also hide service_role keys).
     # The report stays in a temp dir and secrets are never printed.
     jwt_notes, kept = [], []
+    # Build metadata, not secrets: hosting/builders inject the git commit SHA (40 hex chars),
+    # which matches some token rules. Checked by exact context, never by whole line - a
+    # minified bundle is one line, and a line-level allowlist would hide real keys.
+    def is_commit_sha(x: dict) -> bool:
+        try:
+            text = Path(x.get("File", "")).read_text(errors="ignore")
+        except OSError:
+            return False
+        sec = x.get("Secret", "")
+        return bool(re.fullmatch(r"[0-9a-f]{40}", sec)) and f'data-commit-sha="{sec}"' in text
+
+    findings = [x for x in findings if not is_commit_sha(x)]
     for x in findings:
         m = JWT_RE.search(x.get("Secret", "") or x.get("Match", ""))
         role = jwt_role(m.group(1)) if m else None

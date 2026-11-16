@@ -67,11 +67,20 @@ PROBE_JS = """
   const vw = doc.clientWidth;
   const hscroll = doc.scrollWidth > vw + 1;
   const offRight = [];
+  // An element past the edge is harmless if an ancestor clips it inside the viewport
+  // (overflow hidden/clip) or holds it in a scroll container (carousels, overflow auto/scroll). Only unclipped overflow counts.
+  const clipped = (el) => {
+    for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      if (['hidden', 'clip', 'auto', 'scroll'].includes(cs.overflowX) && a.getBoundingClientRect().right <= vw + 1) return true;
+    }
+    return false;
+  };
   for (const el of document.body.querySelectorAll('*')) {
     const cs = getComputedStyle(el);
     if (cs.position === 'fixed' || cs.visibility === 'hidden' || cs.display === 'none') continue;
     const r = el.getBoundingClientRect();
-    if (r.width > 0 && r.right > vw + 1 && offRight.length < 10) {
+    if (r.width > 0 && r.right > vw + 1 && offRight.length < 10 && !clipped(el)) {
       offRight.push((el.tagName + (el.id ? '#' + el.id : '') +
         (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\\s+/)[0] : '')) +
         ' right=' + Math.round(r.right));
@@ -146,8 +155,6 @@ def audit_cell(browser, device_name, ctx_opts, url, shots_dir):
                 cell["issues"].append(f"CLS ({phase}) {c['cls']} >= 0.1, shifted: {', '.join(c['sources']) or '?'}")
         if scroll_back:
             cell["issues"].append(f"scrollY jumped back {scroll_back}x while scrolling down")
-        if len(bottom["fonts"]) > 3:
-            cell["issues"].append(f"many font families loaded: {bottom['fonts']}")
         cell["issues"] += [f"console error: {e}" for e in console_errors[:5]]
         cell["issues"] += [f"HTTP {r}" for r in bad_responses[:5]]
         cell["issues"] = sorted(set(cell["issues"]))
@@ -190,6 +197,20 @@ def main() -> int:
                 mark = "OK " if not cell["issues"] else f"{len(cell['issues'])} issue(s)"
                 print(f"[{mark:>11}] {name:<24} {url}")
         browser.close()
+
+    # Same device, different language -> the loaded font families must match
+    # (a missing Cyrillic/Greek subset silently falls back to a system font).
+    by_device: dict[str, list] = {}
+    for c in cells:
+        if "bottom" in c:
+            by_device.setdefault(c["device"], []).append(c)
+    for dev, group in by_device.items():
+        base = set(group[0]["bottom"]["fonts"])
+        for c in group[1:]:
+            diff = set(c["bottom"]["fonts"]) ^ base
+            if diff:
+                c["issues"].append(f"font families differ from {group[0]['url']}: {sorted(diff)}")
+                print(f"[font issue ] {dev:<24} {c['url']}  {sorted(diff)}")
 
     report = {"tool": "ai-web-qa-kit/audit_ui", "generated_at": stamp, "url": args.url,
               "cells": cells, "failed_cells": sum(1 for c in cells if c["issues"])}
