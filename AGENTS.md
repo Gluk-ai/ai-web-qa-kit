@@ -13,6 +13,6 @@ Read by Claude Code, Codex, Gemini CLI, Copilot and others. `CLAUDE.md` points h
 ## Layout
 - `ai-evals/`: Promptfoo configs for chatbots
 - `ui-playwright/`: device × language layout audit
-- `sec-audit/`: Gitleaks rules and the Supabase RLS probe
+- `sec-audit/`: Gitleaks rules, `scan_build.py` for bundles, and the Supabase RLS probe
 - `skills/`: agent skills that interpret the reports
 - `reports/`: generated output (git-ignored)

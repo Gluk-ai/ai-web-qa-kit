@@ -38,21 +38,26 @@ python ui-playwright/audit_ui.py --url https://your-site.com --langs /,/fr/
 
 # 2. Secrets in git history and in the built bundle
 gitleaks git . -c sec-audit/.gitleaks.toml
-gitleaks dir dist/ -c sec-audit/.gitleaks.toml
+python sec-audit/scan_build.py dist/   # refuses an empty dist/, decodes JWT roles
 
 # 3. What can an anonymous visitor read or write in your Supabase project?
 SUPABASE_URL=... SUPABASE_ANON_KEY=... python sec-audit/check_rls.py
 
-# 4. Chatbot quality (facts, sycophancy, lead loss, scope)
+# 4. Chatbot quality (facts, sycophancy, lead loss, scope) - TEST COPY of the bot only, see warning below
 BOT_WEBHOOK_URL=... RUN_ID=$(date +%s) npx promptfoo@latest eval -c ai-evals/promptfooconfig.yaml
 ```
 
-Every script exits with `1` when it finds a problem, so each one works as a CI gate. Ready-made GitHub Actions live in `.github/workflows/`.
+> **Warning: point `ai-evals/` at a test copy of your bot, never at production.** The tests send
+> real messages. An objection test can trigger a real lead handoff (Telegram/CRM/email) or an outgoing
+> SMS/WhatsApp. Duplicate the workflow, disable lead and messaging actions, and use that webhook.
+
+Every script exits non-zero when it finds a problem, so each one works as a CI gate. Ready-made GitHub Actions live in `.github/workflows/`.
 
 ## What each check catches
 
-- **`audit_ui.py`**: horizontal scroll, elements past the screen edge, overlapping top-level blocks (`getBoundingClientRect`), CLS ≥ 0.1, `scrollY` jumping backwards while scrolling down, too many font families, console errors and 4xx/5xx responses. It checks each cell at the top of the page and again after scrolling to the bottom, and saves a full-page screenshot of every cell.
-- **`check_rls.py`**: anonymous reads (rated CRITICAL for tables named like `leads`, `users` or `payments`), anonymous inserts (opt-in `--write-probe`), and a `service_role` key used where an anon key belongs.
+- **`audit_ui.py`**: horizontal scroll, elements past the screen edge, overlapping top-level blocks (`getBoundingClientRect`), CLS ≥ 0.1 computed web.dev-style (session windows, separately for load and for scrolling, with the shifted elements named), `scrollY` jumping backwards while scrolling down, too many font families, console errors and 4xx/5xx responses. It checks each cell at the top of the page and again after scrolling to the bottom, and saves a full-page screenshot of every cell.
+- **`check_rls.py`**: anonymous reads (rated CRITICAL for tables named like `leads`, `users` or `payments`), anonymous update/insert/delete (opt-in `--write-probe TABLE`: the script creates its own probe row with the service key, checks whether it actually changed and cleans up; live rows are never touched), and a `service_role` key used where an anon key belongs. Before the live test, open **Security Advisor** in the Supabase dashboard: it catches views and `security definer` functions that bypass RLS.
+- **`scan_build.py`**: wraps Gitleaks for `dist/`. An empty folder is an error, not "clean". Findings (exit 2) are kept apart from crashes (exit 1). Supabase anon JWTs are recognised as public, while `service_role` JWTs are flagged.
 - **`.gitleaks.toml`**: the Gitleaks defaults plus rules for secret-looking `VITE_*` variables and n8n API keys. Use Gitleaks 8.30 or newer: older releases do not detect Anthropic keys.
 - **`promptfooconfig.yaml`**: knowledge gaps, false-premise sycophancy, promises on the company's behalf, objection handling, off-topic and competitor requests, card numbers echoed back, and replies in the wrong language.
 

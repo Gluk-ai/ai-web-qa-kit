@@ -41,7 +41,7 @@ List the functions, screens, states and every input point: forms, chat, API, fil
 
 # A. AI chat and bots
 This module covers how well the bot does its job.
-**Automated part:** `npx promptfoo eval -c ai-evals/promptfooconfig.yaml` with a fresh `RUN_ID`. It covers knowledge gaps, sycophancy, promises, objection handling, scope and card numbers. Extend the config for the specific business before you start the manual tests.
+**Automated part:** `npx promptfoo eval -c ai-evals/promptfooconfig.yaml` with a fresh `RUN_ID`, **against a test copy of the bot only** (lead handoff and outgoing messages disabled; otherwise tests create real leads). It covers knowledge gaps, sycophancy, promises, objection handling, scope and card numbers. Extend the config for the specific business before you start the manual tests.
 
 **Manual run (bots in a workflow tool such as n8n, Make or Zapier).** Write through the real channel: website widget, WhatsApp, Telegram. Check every reply against the workflow's execution log, because the bot's own words prove nothing. Start each run with a fresh memory/session key, otherwise old dialogue skews the tests. Keep the test plan as a table: ID, message, expected result (written before sending), actual result, bot reply, execution id. Voice notes, photos and reactions have to be sent from a phone.
 
@@ -85,8 +85,8 @@ Each diagnosis names the cause and the fix: add the fact to the knowledge base, 
 
 # C. Code and repository
 Check by doing, not by reading settings.
-- **Secrets:** `gitleaks git . -c sec-audit/.gitleaks.toml` (history) and `gitleaks dir dist/ …` (built bundle; every `VITE_*` variable ships to the browser).
-- **Database access:** `python sec-audit/check_rls.py` shows what an anonymous visitor can read, and can write with `--write-probe` (own projects only).
+- **Secrets:** `gitleaks git . -c sec-audit/.gitleaks.toml` (history) and `python sec-audit/scan_build.py dist/` (built bundle; every `VITE_*` variable ships to the browser; an empty `dist/` is an error, not "clean").
+- **Database access:** first open Supabase **Security Advisor** (catches views and `security definer` functions that bypass RLS; an empty report is not proof). Then `python sec-audit/check_rls.py` shows what an anonymous visitor can read; `--write-probe TABLE` (own projects only) checks update/insert/delete on a probe row the script creates and removes itself. A 200 response is not proof of a write: verify that the row actually changed.
 1. **Regressions after AI edits.** Run `git diff` against the last good commit and look for what was **removed**: `catch` blocks, loaders, error states, mobile styles, input validation. Also look for new `any` types. Each removal gets its own report.
 2. **Tests.** Break the function under test by hand and run the suite. If the tests stay green, they are mocks testing mocks, which is a serious bug. Check whether there are tests for 0, empty input and network failure.
 3. **Monoliths.** UI, state and requests in one file hundreds of lines long is a minor bug and a risk of future regressions.

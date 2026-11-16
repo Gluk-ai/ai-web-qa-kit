@@ -1,6 +1,9 @@
 # AI chat / bot evals with Promptfoo (https://www.promptfoo.dev).
 # Talks to your bot over HTTP exactly like a website visitor does.
 #
+# !! Use a TEST COPY of the bot workflow with lead handoff and outgoing messages disabled.
+# !! These tests can otherwise create real leads and send real SMS/WhatsApp messages.
+#
 #   export BOT_WEBHOOK_URL=https://your-n8n.example.com/webhook/chat
 #   export RUN_ID=$(date +%s)          # fresh memory key per run, so old dialogs don't leak in
 #   npx promptfoo@latest eval -c ai-evals/promptfooconfig.yaml

@@ -29,14 +29,36 @@ CUSTOM_VIEWPORTS = {
     "Desktop 1440x900 DPR2": {"viewport": {"width": 1440, "height": 900}, "device_scale_factor": 2},
 }
 
-# Buffered CLS observer, installed before any page script runs.
+# Layout-shift recorder, installed before any page script runs. CLS is computed the
+# web.dev way: shifts grouped into session windows (gap < 1 s, window <= 5 s); the score
+# is the largest window. Chromium only (Layout Instability API).
+# hadRecentInput is deliberately NOT used: with mobile device emulation (has_touch)
+# Chromium marks early shifts as "after input" (lastInputTime ~15 ms, no real input),
+# which would hide every load shift on phones. This audit sends no clicks or keys, only
+# wheel scrolling, which the spec never counts as input - so every shift is unexpected.
 CLS_INIT = """
-window.__cls = 0;
+window.__ls = [];
 try {
   new PerformanceObserver((list) => {
-    for (const e of list.getEntries()) if (!e.hadRecentInput) window.__cls += e.value;
+    for (const e of list.getEntries())
+      window.__ls.push({t: e.startTime, v: e.value,
+        src: (e.sources || []).map(s => s.node && s.node.nodeName ? s.node.nodeName.toLowerCase() +
+             (s.node.id ? '#' + s.node.id : '') : null).filter(Boolean).slice(0, 3)});
   }).observe({type: 'layout-shift', buffered: true});
 } catch (e) {}
+"""
+
+CLS_JS = """
+(since) => {
+  const es = (window.__ls || []).filter(e => e.t >= since);
+  let best = 0, bestSrc = [], cur = 0, curSrc = [], start = -1, last = -1;
+  for (const e of es) {
+    if (start < 0 || e.t - last >= 1000 || e.t - start > 5000) { cur = 0; curSrc = []; start = e.t; }
+    cur += e.v; curSrc = curSrc.concat(e.src); last = e.t;
+    if (cur > best) { best = cur; bestSrc = curSrc.slice(0, 3); }
+  }
+  return {cls: Math.round(best * 1000) / 1000, sources: [...new Set(bestSrc)]};
+}
 """
 
 PROBE_JS = """
@@ -73,7 +95,7 @@ PROBE_JS = """
   }
   const fonts = [...new Set([...document.fonts].filter(f => f.status === 'loaded').map(f => f.family.replace(/"/g, '')))];
   return {hscroll, scrollWidth: doc.scrollWidth, viewport: vw, offRight, overlaps,
-          cls: Math.round((window.__cls || 0) * 1000) / 1000, lang: doc.lang || null, fonts,
+          lang: doc.lang || null, fonts,
           scrollHeight: doc.scrollHeight};
 }
 """
@@ -94,6 +116,8 @@ def audit_cell(browser, device_name, ctx_opts, url, shots_dir):
     try:
         page.goto(url, wait_until="networkidle", timeout=45000)
         top = page.evaluate(PROBE_JS)
+        cls_load = page.evaluate(CLS_JS, 0)
+        scroll_start = page.evaluate("performance.now()")
         # Scroll to the bottom in steps (catches lazy blocks, layout jumps, scroll-back bugs).
         last_y, scroll_back = 0, 0
         for _ in range(60):
@@ -106,9 +130,10 @@ def audit_cell(browser, device_name, ctx_opts, url, shots_dir):
                 break
             last_y = y
         bottom = page.evaluate(PROBE_JS)
+        cls_scroll = page.evaluate(CLS_JS, scroll_start)
         slug_name = f"{slug(device_name)}__{slug(url.split('//', 1)[-1])}"
         page.screenshot(path=str(shots_dir / f"{slug_name}.png"), full_page=True)
-        cell.update(top=top, bottom=bottom, console_errors=console_errors[:10],
+        cell.update(top=top, bottom=bottom, cls_load=cls_load, cls_scroll=cls_scroll, console_errors=console_errors[:10],
                     bad_responses=bad_responses[:10], scroll_back_events=scroll_back,
                     screenshot=f"{slug_name}.png")
         for probe in (top, bottom):
@@ -116,8 +141,9 @@ def audit_cell(browser, device_name, ctx_opts, url, shots_dir):
                 cell["issues"].append(f"horizontal scroll: {probe['scrollWidth']} > {probe['viewport']}")
             cell["issues"] += [f"off right edge: {x}" for x in probe["offRight"]]
             cell["issues"] += [f"overlap: {x}" for x in probe["overlaps"]]
-        if bottom["cls"] >= 0.1:
-            cell["issues"].append(f"CLS {bottom['cls']} >= 0.1")
+        for phase, c in (("load", cls_load), ("scroll", cls_scroll)):
+            if c["cls"] >= 0.1:  # lab estimate from a single run; confirm with PageSpeed field data
+                cell["issues"].append(f"CLS ({phase}) {c['cls']} >= 0.1, shifted: {', '.join(c['sources']) or '?'}")
         if scroll_back:
             cell["issues"].append(f"scrollY jumped back {scroll_back}x while scrolling down")
         if len(bottom["fonts"]) > 3:
